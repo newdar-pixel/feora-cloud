@@ -4,101 +4,41 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Feora Cloud</title>
-
 <style>
-body{
-  margin:0;
-  font-family:Arial, sans-serif;
-  background:#0b0d14;
-  color:white;
-}
+body{margin:0;font-family:Arial;background:#0b0d14;color:white}
+button{cursor:pointer}
+.hidden{display:none}
 
-.pin-screen{
-  position:fixed;
-  inset:0;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  background:#0b0d14;
-}
+/* PIN */
+.pin-screen{position:fixed;inset:0;display:flex;justify-content:center;align-items:center;background:#0b0d14}
+.pin-box{text-align:center}
+.pin-dots{display:flex;gap:12px;justify-content:center;margin:20px 0}
+.pin-dots span{width:16px;height:16px;border-radius:50%;background:#2a2f3a}
+.pin-dots span.filled{background:#cc1f1f}
+.pin-pad{display:grid;grid-template-columns:repeat(3,80px);gap:14px;justify-content:center}
+.pin-pad button{height:80px;font-size:22px;border-radius:18px;border:none;background:#1b1f2a;color:white}
+.pin-error{margin-top:10px;color:#ff4d4d;height:20px}
 
-.pin-box{
-  text-align:center;
-}
-
-.logo{
-  font-size:28px;
-  font-weight:bold;
-  margin-bottom:20px;
-}
-
-.logo span{
-  color:#cc1f1f;
-}
-
-.pin-dots{
-  display:flex;
-  gap:12px;
-  justify-content:center;
-  margin:20px 0;
-}
-
-.pin-dots span{
-  width:16px;
-  height:16px;
-  border-radius:50%;
-  background:#2a2f3a;
-}
-
-.pin-dots span.filled{
-  background:#cc1f1f;
-}
-
-.pin-pad{
-  display:grid;
-  grid-template-columns:repeat(3,80px);
-  gap:14px;
-  justify-content:center;
-}
-
-.pin-pad button{
-  height:80px;
-  font-size:22px;
-  border-radius:18px;
-  border:none;
-  background:#1b1f2a;
-  color:white;
-}
-
-.pin-error{
-  margin-top:15px;
-  color:#ff4d4d;
-  min-height:20px;
-}
-
-.app{
-  display:none;
-  padding:20px;
-}
-
-.header{
-  font-size:22px;
-  font-weight:bold;
-  margin-bottom:10px;
-}
+/* APP */
+.header{padding:15px;font-size:22px;font-weight:bold;background:#111827}
+.container{padding:15px}
+.card{background:#1b1f2a;padding:15px;border-radius:12px;margin-bottom:15px}
+input{width:100%;padding:10px;border-radius:8px;border:none;margin-top:6px;margin-bottom:10px}
+.btn{padding:10px;border-radius:8px;border:none;background:#cc1f1f;color:white;width:100%}
+.list-item{display:flex;justify-content:space-between;margin:6px 0}
+.small{font-size:13px;color:#aaa}
 </style>
 </head>
 <body>
 
+<!-- PIN -->
 <div class="pin-screen" id="pinScreen">
   <div class="pin-box">
-    <div class="logo">FEORA <span>OIL</span></div>
+    <h2>FEORA OIL</h2>
     <div>PIN Girin</div>
-
     <div class="pin-dots" id="dots">
       <span></span><span></span><span></span><span></span>
     </div>
-
     <div class="pin-pad">
       <button data-num="1">1</button>
       <button data-num="2">2</button>
@@ -113,74 +53,111 @@ body{
       <button data-num="0">0</button>
       <button id="delBtn">⌫</button>
     </div>
-
     <div class="pin-error" id="errorBox"></div>
   </div>
 </div>
 
-<div class="app" id="app">
+<!-- APP -->
+<div id="app" class="hidden">
   <div class="header">Feora Cloud Panel</div>
-  <div>Giriş başarılı 🎉</div>
+  <div class="container">
+
+    <div class="card">
+      <div>Toplam Gelir: <b id="totalIncome">0 ₺</b></div>
+      <div>Toplam Gider: <b id="totalExpense">0 ₺</b></div>
+      <div>Net: <b id="netTotal">0 ₺</b></div>
+    </div>
+
+    <div class="card">
+      <h3>Gelir Ekle</h3>
+      <input type="text" id="incomeDesc" placeholder="Açıklama">
+      <input type="number" id="incomeAmount" placeholder="Tutar">
+      <button class="btn" id="addIncome">Kaydet</button>
+    </div>
+
+    <div class="card">
+      <h3>Gider Ekle</h3>
+      <input type="text" id="expenseDesc" placeholder="Açıklama">
+      <input type="number" id="expenseAmount" placeholder="Tutar">
+      <button class="btn" id="addExpense">Kaydet</button>
+    </div>
+
+    <div class="card">
+      <h3>Hareketler</h3>
+      <div id="list"></div>
+    </div>
+
+  </div>
 </div>
 
 <script>
-const PIN_KEY = "feora_pin_secure";
-const PIN_LENGTH = 4;
+/* ---------- PIN ---------- */
+const PIN_KEY="feora_pin_secure"
+const PIN_LENGTH=4
+let buffer=""
+const savedPin=localStorage.getItem(PIN_KEY)||"0000"
+const dots=document.querySelectorAll("#dots span")
+const errorBox=document.getElementById("errorBox")
+const pinScreen=document.getElementById("pinScreen")
+const app=document.getElementById("app")
 
-let buffer = "";
-
-const pinScreen = document.getElementById("pinScreen");
-const app = document.getElementById("app");
-const dots = document.querySelectorAll("#dots span");
-const errorBox = document.getElementById("errorBox");
-
-const savedPin = localStorage.getItem(PIN_KEY) || "0000";
-
-function updateDots(){
-  dots.forEach((dot,i)=>{
-    dot.classList.toggle("filled", i < buffer.length);
-  });
-}
-
-function resetPin(){
-  buffer="";
-  updateDots();
-}
-
-function unlock(){
-  pinScreen.style.display="none";
-  app.style.display="block";
-}
-
-function checkPin(){
-  if(buffer === savedPin){
-    unlock();
-  }else{
-    errorBox.textContent="Hatalı PIN";
-    setTimeout(()=>{
-      errorBox.textContent="";
-      resetPin();
-    },800);
-  }
-}
+function updateDots(){dots.forEach((d,i)=>d.classList.toggle("filled",i<buffer.length))}
+function resetPin(){buffer="";updateDots()}
+function unlock(){pinScreen.style.display="none";app.classList.remove("hidden")}
+function checkPin(){if(buffer===savedPin){unlock()}else{errorBox.textContent="Hatalı PIN";setTimeout(()=>{errorBox.textContent="";resetPin()},800)}}
 
 document.querySelectorAll("[data-num]").forEach(btn=>{
-  btn.addEventListener("click", ()=>{
-    if(buffer.length >= PIN_LENGTH) return;
-    buffer += btn.dataset.num;
-    updateDots();
-    if(buffer.length === PIN_LENGTH){
-      setTimeout(checkPin,200);
-    }
-  });
-});
+btn.addEventListener("click",()=>{
+if(buffer.length>=PIN_LENGTH)return
+buffer+=btn.dataset.num
+updateDots()
+if(buffer.length===PIN_LENGTH)setTimeout(checkPin,200)
+})
+})
+document.getElementById("delBtn").addEventListener("click",()=>{buffer=buffer.slice(0,-1);updateDots()})
+document.getElementById("clearBtn").addEventListener("click",resetPin)
 
-document.getElementById("delBtn").addEventListener("click", ()=>{
-  buffer = buffer.slice(0,-1);
-  updateDots();
-});
+/* ---------- DATABASE ---------- */
+let DB=JSON.parse(localStorage.getItem("feora_db"))||{income:[],expense:[]}
+function saveDB(){localStorage.setItem("feora_db",JSON.stringify(DB))}
 
-document.getElementById("clearBtn").addEventListener("click", resetPin);
+/* ---------- RENDER ---------- */
+function render(){
+let totalIncome=0,totalExpense=0
+const list=document.getElementById("list")
+list.innerHTML=""
+DB.income.forEach((i,idx)=>{
+totalIncome+=Number(i.amount)
+list.innerHTML+=`<div class="list-item"><span>${i.desc}</span><span>+${i.amount} ₺</span></div>`
+})
+DB.expense.forEach((e,idx)=>{
+totalExpense+=Number(e.amount)
+list.innerHTML+=`<div class="list-item"><span>${e.desc}</span><span>-${e.amount} ₺</span></div>`
+})
+document.getElementById("totalIncome").innerText=totalIncome+" ₺"
+document.getElementById("totalExpense").innerText=totalExpense+" ₺"
+document.getElementById("netTotal").innerText=(totalIncome-totalExpense)+" ₺"
+}
+render()
+
+/* ---------- ADD ---------- */
+document.getElementById("addIncome").addEventListener("click",()=>{
+const desc=document.getElementById("incomeDesc").value
+const amount=document.getElementById("incomeAmount").value
+if(!desc||!amount)return
+DB.income.push({desc,amount})
+saveDB()
+render()
+})
+
+document.getElementById("addExpense").addEventListener("click",()=>{
+const desc=document.getElementById("expenseDesc").value
+const amount=document.getElementById("expenseAmount").value
+if(!desc||!amount)return
+DB.expense.push({desc,amount})
+saveDB()
+render()
+})
 </script>
 
 </body>
