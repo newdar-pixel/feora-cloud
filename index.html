@@ -28,7 +28,6 @@ header{
   padding:14px;
   border-radius:12px;
 }
-.card h3{margin:0;font-size:12px;opacity:.7}
 .val{font-size:18px;margin-top:6px;font-weight:bold}
 button{
   background:#d10000;
@@ -47,20 +46,39 @@ td,th{
   padding:6px;
   border-bottom:1px solid #222;
 }
+.login-box{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:30px;
+}
+input{
+  padding:10px;
+  border-radius:6px;
+  border:none;
+}
 </style>
 </head>
 <body>
+
+<div id="loginScreen" class="login-box">
+  <h2>Giriş Yap</h2>
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Şifre">
+  <button onclick="login()">Giriş</button>
+</div>
+
+<div id="app" style="display:none">
 
 <header>
 <h2>Feora Cloud Finans</h2>
 </header>
 
 <div class="dashboard">
-<div class="card"><h3>Nakit</h3><div class="val" id="kasa">0</div></div>
-<div class="card"><h3>Alacak</h3><div class="val" id="alacak">0</div></div>
-<div class="card"><h3>Borç</h3><div class="val" id="borc">0</div></div>
-<div class="card"><h3>Net Kar</h3><div class="val" id="kar">0</div></div>
-<div class="card"><h3>KDV Net</h3><div class="val" id="kdv">0</div></div>
+<div class="card"><div>Nakit</div><div class="val" id="kasa">0</div></div>
+<div class="card"><div>Alacak</div><div class="val" id="alacak">0</div></div>
+<div class="card"><div>Borç</div><div class="val" id="borc">0</div></div>
+<div class="card"><div>Net Kar</div><div class="val" id="kar">0</div></div>
 </div>
 
 <div style="text-align:center;">
@@ -77,10 +95,14 @@ td,th{
 <tbody id="list"></tbody>
 </table>
 
+</div>
+
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } 
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged }
+from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc }
 from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -93,121 +115,95 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
-const colRef = collection(db, "transactions");
 
 let DB = [];
+let colRef;
+
+window.login = async ()=>{
+  const email=document.getElementById("email").value;
+  const pass=document.getElementById("password").value;
+  await signInWithEmailAndPassword(auth,email,pass)
+    .catch(()=>alert("Giriş Hatalı"));
+};
+
+onAuthStateChanged(auth,(user)=>{
+  if(user){
+    document.getElementById("loginScreen").style.display="none";
+    document.getElementById("app").style.display="block";
+    colRef = collection(db,"transactions");
+
+    onSnapshot(colRef,(snapshot)=>{
+      DB = snapshot.docs.map(d=>({id:d.id,...d.data()}));
+      render();
+    });
+  }
+});
 
 function tl(x){
   return x.toLocaleString("tr-TR",{style:"currency",currency:"TRY"});
 }
 
 function calculate(){
-  let L={gelir:0,gider:0,kasa:0,alacak:0,borc:0,kdvA:0,kdvB:0};
-
+  let L={gelir:0,gider:0,kasa:0,alacak:0,borc:0};
   DB.forEach(t=>{
-    if(t.type==="gelir"){
-      L.gelir+=t.net;
-      L.kdvA+=t.kdv;
-      L.alacak+=(t.net+t.kdv);
-    }
-    if(t.type==="gider"){
-      L.gider+=t.net;
-      L.kdvB+=t.kdv;
-      L.borc+=(t.net+t.kdv);
-    }
-    if(t.type==="tahsilat"){
-      L.kasa+=t.amount;
-      L.alacak-=t.amount;
-    }
-    if(t.type==="odeme"){
-      L.kasa-=t.amount;
-      L.borc-=t.amount;
-    }
+    if(t.type==="gelir") L.gelir+=t.amount;
+    if(t.type==="gider") L.gider+=t.amount;
+    if(t.type==="tahsilat") L.kasa+=t.amount;
+    if(t.type==="odeme") L.kasa-=t.amount;
   });
-
   L.netKar=L.gelir-L.gider;
-  L.kdvNet=L.kdvA-L.kdvB;
-
   return L;
 }
 
 function render(){
   const L=calculate();
-
   document.getElementById("kasa").innerText=tl(L.kasa);
-  document.getElementById("alacak").innerText=tl(L.alacak);
-  document.getElementById("borc").innerText=tl(L.borc);
+  document.getElementById("alacak").innerText=tl(L.alacak||0);
+  document.getElementById("borc").innerText=tl(L.borc||0);
   document.getElementById("kar").innerText=tl(L.netKar);
-  document.getElementById("kdv").innerText=tl(L.kdvNet);
 
   const list=document.getElementById("list");
   list.innerHTML="";
-
   DB.slice().reverse().forEach(t=>{
     list.innerHTML+=`
     <tr>
       <td>${new Date(t.date).toLocaleDateString()}</td>
       <td>${t.type}</td>
-      <td>${tl(t.net||t.amount)}</td>
+      <td>${tl(t.amount)}</td>
       <td><button onclick="sil('${t.id}')">X</button></td>
     </tr>`;
   });
 }
 
 window.gelir = async ()=>{
-  const net=Number(prompt("Net Tutar"));
-  if(!net) return;
-  await addDoc(colRef,{
-    type:"gelir",
-    net,
-    kdv:net*0.20,
-    date:new Date().toISOString()
-  });
+  const amount=Number(prompt("Gelir Tutarı"));
+  if(!amount) return;
+  await addDoc(colRef,{type:"gelir",amount,date:new Date().toISOString()});
 };
 
 window.gider = async ()=>{
-  const net=Number(prompt("Net Tutar"));
-  if(!net) return;
-  await addDoc(colRef,{
-    type:"gider",
-    net,
-    kdv:net*0.20,
-    date:new Date().toISOString()
-  });
+  const amount=Number(prompt("Gider Tutarı"));
+  if(!amount) return;
+  await addDoc(colRef,{type:"gider",amount,date:new Date().toISOString()});
 };
 
 window.tahsilat = async ()=>{
-  const amount=Number(prompt("Tahsilat Tutarı"));
+  const amount=Number(prompt("Tahsilat"));
   if(!amount) return;
-  await addDoc(colRef,{
-    type:"tahsilat",
-    amount,
-    date:new Date().toISOString()
-  });
+  await addDoc(colRef,{type:"tahsilat",amount,date:new Date().toISOString()});
 };
 
 window.odeme = async ()=>{
-  const amount=Number(prompt("Ödeme Tutarı"));
+  const amount=Number(prompt("Ödeme"));
   if(!amount) return;
-  await addDoc(colRef,{
-    type:"odeme",
-    amount,
-    date:new Date().toISOString()
-  });
+  await addDoc(colRef,{type:"odeme",amount,date:new Date().toISOString()});
 };
 
 window.sil = async (id)=>{
   await deleteDoc(doc(db,"transactions",id));
 };
-
-onSnapshot(colRef,(snapshot)=>{
-  DB = snapshot.docs.map(d=>({
-    id:d.id,
-    ...d.data()
-  }));
-  render();
-});
 
 </script>
 
