@@ -3,98 +3,73 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Feora Cloud</title>
-
+<title>Feora Finans</title>
 <style>
-body{
-  margin:0;
-  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-  background:#0a0a12;
-  color:white;
-}
-header{
-  text-align:center;
-  padding:15px;
-  border-bottom:2px solid #d10000;
-}
-.dashboard{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:12px;
-  padding:15px;
-}
-.card{
-  background:#0b1a4a;
-  padding:14px;
-  border-radius:12px;
-}
-.val{font-size:18px;margin-top:6px;font-weight:bold}
-button{
-  background:#d10000;
-  border:none;
-  padding:8px 12px;
-  color:white;
-  border-radius:6px;
-  margin:4px;
-}
-table{
-  width:100%;
-  font-size:12px;
-  border-collapse:collapse;
-}
-td,th{
-  padding:6px;
-  border-bottom:1px solid #222;
-}
-.login-box{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  padding:30px;
-}
-input{
-  padding:10px;
-  border-radius:6px;
-  border:none;
-}
+body{margin:0;font-family:-apple-system;background:#0f172a;color:white}
+header{padding:15px;text-align:center;background:#111827}
+h2{margin:0}
+.container{padding:15px}
+.card{background:#1f2937;padding:15px;border-radius:10px;margin-bottom:15px}
+button{padding:8px 12px;border:none;border-radius:6px;background:#dc2626;color:white;margin-top:5px}
+input,select{padding:8px;border-radius:6px;border:none;margin:4px 0;width:100%}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{padding:6px;border-bottom:1px solid #333}
+.login{display:flex;flex-direction:column;gap:10px;padding:40px}
 </style>
 </head>
 <body>
 
-<div id="loginScreen" class="login-box">
-  <h2>Giriş Yap</h2>
-  <input id="email" placeholder="Email">
-  <input id="password" type="password" placeholder="Şifre">
-  <button onclick="login()">Giriş</button>
+<div id="loginScreen" class="login">
+<h2>Giriş Yap</h2>
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Şifre">
+<button onclick="login()">Giriş</button>
 </div>
 
 <div id="app" style="display:none">
+<header><h2>Feora Ön Muhasebe</h2></header>
 
-<header>
-<h2>Feora Cloud Finans</h2>
-</header>
+<div class="container">
 
-<div class="dashboard">
-<div class="card"><div>Nakit</div><div class="val" id="kasa">0</div></div>
-<div class="card"><div>Alacak</div><div class="val" id="alacak">0</div></div>
-<div class="card"><div>Borç</div><div class="val" id="borc">0</div></div>
-<div class="card"><div>Net Kar</div><div class="val" id="kar">0</div></div>
+<div class="card">
+<h3>Kasa: <span id="kasa">0</span></h3>
+<h3>Net Kar: <span id="kar">0</span></h3>
 </div>
 
-<div style="text-align:center;">
-<button onclick="gelir()">Gelir</button>
-<button onclick="gider()">Gider</button>
-<button onclick="tahsilat()">Tahsilat</button>
-<button onclick="odeme()">Ödeme</button>
+<div class="card">
+<h3>Cari Seç</h3>
+<select id="cariSelect"></select>
+<button onclick="yeniCari()">Yeni Cari</button>
 </div>
 
+<div class="card">
+<h3>İşlem Ekle</h3>
+<select id="islemTip">
+<option value="gelir">Gelir</option>
+<option value="gider">Gider</option>
+<option value="tahsilat">Tahsilat</option>
+<option value="odeme">Ödeme</option>
+</select>
+<input id="tutar" type="number" placeholder="Tutar">
+<button onclick="islemEkle()">Kaydet</button>
+</div>
+
+<div class="card">
+<h3>Cari Bakiyeleri</h3>
+<div id="cariBakiyeler"></div>
+</div>
+
+<div class="card">
+<h3>Hareketler</h3>
 <table>
 <thead>
-<tr><th>Tarih</th><th>Tip</th><th>Tutar</th><th></th></tr>
+<tr><th>Tarih</th><th>Cari</th><th>Tip</th><th>Tutar</th><th></th></tr>
 </thead>
-<tbody id="list"></tbody>
+<tbody id="liste"></tbody>
 </table>
+</div>
 
+</div>
 </div>
 
 <script type="module">
@@ -118,94 +93,109 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-let DB = [];
-let colRef;
+let transactions=[];
+let cariler=[];
+let transRef;
+let cariRef;
 
 window.login = async ()=>{
-  const email=document.getElementById("email").value;
-  const pass=document.getElementById("password").value;
-  await signInWithEmailAndPassword(auth,email,pass)
-    .catch(()=>alert("Giriş Hatalı"));
+const email=document.getElementById("email").value;
+const pass=document.getElementById("password").value;
+await signInWithEmailAndPassword(auth,email,pass)
+.catch(()=>alert("Giriş Hatalı"));
 };
 
 onAuthStateChanged(auth,(user)=>{
-  if(user){
-    document.getElementById("loginScreen").style.display="none";
-    document.getElementById("app").style.display="block";
-    colRef = collection(db,"transactions");
+if(user){
+document.getElementById("loginScreen").style.display="none";
+document.getElementById("app").style.display="block";
 
-    onSnapshot(colRef,(snapshot)=>{
-      DB = snapshot.docs.map(d=>({id:d.id,...d.data()}));
-      render();
-    });
-  }
+transRef=collection(db,"transactions");
+cariRef=collection(db,"cariler");
+
+onSnapshot(transRef,s=>{
+transactions=s.docs.map(d=>({id:d.id,...d.data()}));
+render();
+});
+
+onSnapshot(cariRef,s=>{
+cariler=s.docs.map(d=>({id:d.id,...d.data()}));
+renderCariler();
+});
+}
 });
 
 function tl(x){
-  return x.toLocaleString("tr-TR",{style:"currency",currency:"TRY"});
-}
-
-function calculate(){
-  let L={gelir:0,gider:0,kasa:0,alacak:0,borc:0};
-  DB.forEach(t=>{
-    if(t.type==="gelir") L.gelir+=t.amount;
-    if(t.type==="gider") L.gider+=t.amount;
-    if(t.type==="tahsilat") L.kasa+=t.amount;
-    if(t.type==="odeme") L.kasa-=t.amount;
-  });
-  L.netKar=L.gelir-L.gider;
-  return L;
+return Number(x).toLocaleString("tr-TR",{style:"currency",currency:"TRY"});
 }
 
 function render(){
-  const L=calculate();
-  document.getElementById("kasa").innerText=tl(L.kasa);
-  document.getElementById("alacak").innerText=tl(L.alacak||0);
-  document.getElementById("borc").innerText=tl(L.borc||0);
-  document.getElementById("kar").innerText=tl(L.netKar);
+let kasa=0;
+let gelir=0;
+let gider=0;
+let cariBakiye={};
 
-  const list=document.getElementById("list");
-  list.innerHTML="";
-  DB.slice().reverse().forEach(t=>{
-    list.innerHTML+=`
-    <tr>
-      <td>${new Date(t.date).toLocaleDateString()}</td>
-      <td>${t.type}</td>
-      <td>${tl(t.amount)}</td>
-      <td><button onclick="sil('${t.id}')">X</button></td>
-    </tr>`;
-  });
+transactions.forEach(t=>{
+if(!cariBakiye[t.cariId]) cariBakiye[t.cariId]=0;
+
+if(t.type==="gelir"){gelir+=t.amount;cariBakiye[t.cariId]+=t.amount;}
+if(t.type==="gider"){gider+=t.amount;cariBakiye[t.cariId]-=t.amount;}
+if(t.type==="tahsilat"){kasa+=t.amount;cariBakiye[t.cariId]-=t.amount;}
+if(t.type==="odeme"){kasa-=t.amount;cariBakiye[t.cariId]+=t.amount;}
+});
+
+document.getElementById("kasa").innerText=tl(kasa);
+document.getElementById("kar").innerText=tl(gelir-gider);
+
+let liste=document.getElementById("liste");
+liste.innerHTML="";
+transactions.slice().reverse().forEach(t=>{
+let cari=cariler.find(c=>c.id===t.cariId);
+liste.innerHTML+=`
+<tr>
+<td>${new Date(t.date).toLocaleDateString()}</td>
+<td>${cari?cari.name:"-"}</td>
+<td>${t.type}</td>
+<td>${tl(t.amount)}</td>
+<td><button onclick="sil('${t.id}')">X</button></td>
+</tr>`;
+});
+
+let bakiyeDiv=document.getElementById("cariBakiyeler");
+bakiyeDiv.innerHTML="";
+for(let id in cariBakiye){
+let cari=cariler.find(c=>c.id===id);
+bakiyeDiv.innerHTML+=`${cari?cari.name:"-"} : ${tl(cariBakiye[id])}<br>`;
+}
 }
 
-window.gelir = async ()=>{
-  const amount=Number(prompt("Gelir Tutarı"));
-  if(!amount) return;
-  await addDoc(colRef,{type:"gelir",amount,date:new Date().toISOString()});
+function renderCariler(){
+let select=document.getElementById("cariSelect");
+select.innerHTML="";
+cariler.forEach(c=>{
+select.innerHTML+=`<option value="${c.id}">${c.name}</option>`;
+});
+}
+
+window.yeniCari = async ()=>{
+let name=prompt("Cari Adı");
+if(!name) return;
+await addDoc(cariRef,{name,createdAt:new Date()});
 };
 
-window.gider = async ()=>{
-  const amount=Number(prompt("Gider Tutarı"));
-  if(!amount) return;
-  await addDoc(colRef,{type:"gider",amount,date:new Date().toISOString()});
-};
-
-window.tahsilat = async ()=>{
-  const amount=Number(prompt("Tahsilat"));
-  if(!amount) return;
-  await addDoc(colRef,{type:"tahsilat",amount,date:new Date().toISOString()});
-};
-
-window.odeme = async ()=>{
-  const amount=Number(prompt("Ödeme"));
-  if(!amount) return;
-  await addDoc(colRef,{type:"odeme",amount,date:new Date().toISOString()});
+window.islemEkle = async ()=>{
+let type=document.getElementById("islemTip").value;
+let amount=Number(document.getElementById("tutar").value);
+let cariId=document.getElementById("cariSelect").value;
+if(!amount||!cariId) return;
+await addDoc(transRef,{type,amount,cariId,date:new Date().toISOString()});
+document.getElementById("tutar").value="";
 };
 
 window.sil = async (id)=>{
-  await deleteDoc(doc(db,"transactions",id));
+await deleteDoc(doc(db,"transactions",id));
 };
 
 </script>
-
 </body>
 </html>
