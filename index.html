@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feora Cloud</title>
+
+<style>
+body{
+  margin:0;
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  background:#0a0a12;
+  color:white;
+}
+header{
+  text-align:center;
+  padding:15px;
+  border-bottom:2px solid #d10000;
+}
+.dashboard{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:12px;
+  padding:15px;
+}
+.card{
+  background:#0b1a4a;
+  padding:14px;
+  border-radius:12px;
+}
+.card h3{margin:0;font-size:12px;opacity:.7}
+.val{font-size:18px;margin-top:6px;font-weight:bold}
+button{
+  background:#d10000;
+  border:none;
+  padding:8px 12px;
+  color:white;
+  border-radius:6px;
+  margin:4px;
+}
+table{
+  width:100%;
+  font-size:12px;
+  border-collapse:collapse;
+}
+td,th{
+  padding:6px;
+  border-bottom:1px solid #222;
+}
+</style>
+</head>
+<body>
+
+<header>
+<h2>Feora Cloud Finans</h2>
+</header>
+
+<div class="dashboard">
+<div class="card"><h3>Nakit</h3><div class="val" id="kasa">0</div></div>
+<div class="card"><h3>Alacak</h3><div class="val" id="alacak">0</div></div>
+<div class="card"><h3>Borç</h3><div class="val" id="borc">0</div></div>
+<div class="card"><h3>Net Kar</h3><div class="val" id="kar">0</div></div>
+<div class="card"><h3>KDV Net</h3><div class="val" id="kdv">0</div></div>
+</div>
+
+<div style="text-align:center;">
+<button onclick="gelir()">Gelir</button>
+<button onclick="gider()">Gider</button>
+<button onclick="tahsilat()">Tahsilat</button>
+<button onclick="odeme()">Ödeme</button>
+</div>
+
+<table>
+<thead>
+<tr><th>Tarih</th><th>Tip</th><th>Tutar</th><th></th></tr>
+</thead>
+<tbody id="list"></tbody>
+</table>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } 
+from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB67ll8JL4UQhv2z-nV-j8VNdOdWpXNdDY",
+  authDomain: "feora-finans.firebaseapp.com",
+  projectId: "feora-finans",
+  storageBucket: "feora-finans.firebasestorage.app",
+  messagingSenderId: "190320479090",
+  appId: "1:190320479090:web:8cc249c9688db5b427ebeb"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const colRef = collection(db, "transactions");
+
+let DB = [];
+
+function tl(x){
+  return x.toLocaleString("tr-TR",{style:"currency",currency:"TRY"});
+}
+
+function calculate(){
+  let L={gelir:0,gider:0,kasa:0,alacak:0,borc:0,kdvA:0,kdvB:0};
+
+  DB.forEach(t=>{
+    if(t.type==="gelir"){
+      L.gelir+=t.net;
+      L.kdvA+=t.kdv;
+      L.alacak+=(t.net+t.kdv);
+    }
+    if(t.type==="gider"){
+      L.gider+=t.net;
+      L.kdvB+=t.kdv;
+      L.borc+=(t.net+t.kdv);
+    }
+    if(t.type==="tahsilat"){
+      L.kasa+=t.amount;
+      L.alacak-=t.amount;
+    }
+    if(t.type==="odeme"){
+      L.kasa-=t.amount;
+      L.borc-=t.amount;
+    }
+  });
+
+  L.netKar=L.gelir-L.gider;
+  L.kdvNet=L.kdvA-L.kdvB;
+
+  return L;
+}
+
+function render(){
+  const L=calculate();
+
+  document.getElementById("kasa").innerText=tl(L.kasa);
+  document.getElementById("alacak").innerText=tl(L.alacak);
+  document.getElementById("borc").innerText=tl(L.borc);
+  document.getElementById("kar").innerText=tl(L.netKar);
+  document.getElementById("kdv").innerText=tl(L.kdvNet);
+
+  const list=document.getElementById("list");
+  list.innerHTML="";
+
+  DB.slice().reverse().forEach(t=>{
+    list.innerHTML+=`
+    <tr>
+      <td>${new Date(t.date).toLocaleDateString()}</td>
+      <td>${t.type}</td>
+      <td>${tl(t.net||t.amount)}</td>
+      <td><button onclick="sil('${t.id}')">X</button></td>
+    </tr>`;
+  });
+}
+
+window.gelir = async ()=>{
+  const net=Number(prompt("Net Tutar"));
+  if(!net) return;
+  await addDoc(colRef,{
+    type:"gelir",
+    net,
+    kdv:net*0.20,
+    date:new Date().toISOString()
+  });
+};
+
+window.gider = async ()=>{
+  const net=Number(prompt("Net Tutar"));
+  if(!net) return;
+  await addDoc(colRef,{
+    type:"gider",
+    net,
+    kdv:net*0.20,
+    date:new Date().toISOString()
+  });
+};
+
+window.tahsilat = async ()=>{
+  const amount=Number(prompt("Tahsilat Tutarı"));
+  if(!amount) return;
+  await addDoc(colRef,{
+    type:"tahsilat",
+    amount,
+    date:new Date().toISOString()
+  });
+};
+
+window.odeme = async ()=>{
+  const amount=Number(prompt("Ödeme Tutarı"));
+  if(!amount) return;
+  await addDoc(colRef,{
+    type:"odeme",
+    amount,
+    date:new Date().toISOString()
+  });
+};
+
+window.sil = async (id)=>{
+  await deleteDoc(doc(db,"transactions",id));
+};
+
+onSnapshot(colRef,(snapshot)=>{
+  DB = snapshot.docs.map(d=>({
+    id:d.id,
+    ...d.data()
+  }));
+  render();
+});
+
+</script>
+
+</body>
+</html>
